@@ -1,5 +1,23 @@
 <!-- See COPYING.txt for license details. -->
 
+# NipTek M1
+
+**A [Nipahc Technologies](https://github.com/Nipahc) flavor of the Monstatek M1 firmware.**
+
+NipTek M1 is a custom build of the open-source Monstatek M1 firmware with its own
+branding and (in progress) feature additions.
+
+- **Based on:** [Monstatek/M1](https://github.com/Monstatek/M1) — all original hardware
+  bring-up, drivers, and protocol stacks are Monstatek's work.
+- **License:** GPL-3.0 (unchanged). This fork stays GPL-3.0; Monstatek's copyright
+  notices are preserved and the corresponding source is published in this repository.
+- **Upstream sync:** the git remote `upstream` points at Monstatek/M1 so official
+  updates can be merged in.
+
+Changes made in this flavor are recorded in [CHANGES-NipTek.md](CHANGES-NipTek.md).
+
+---
+
 # M1 Firmware
 
 Firmware for the M1 NFC/RFID multi-protocol device, built on STM32H5.
