@@ -783,29 +783,39 @@ static void startup_bu_registers_init(void)
 void startup_info_screen_display(const char *scr_text)
 {
 	char fw_ver[20];
-	uint8_t len, x0;
 
 	u8g2_SetPowerSave(&m1_u8g2, false);
 
-	/* Graphic work starts here */
+	/* Graphic work starts here. Text is centered using the font's measured
+	 * width (u8g2_GetStrWidth) so nothing clips regardless of font. */
 	u8g2_FirstPage(&m1_u8g2);
 	u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_TXT);
-	u8g2_DrawXBMP(&m1_u8g2, M1_POWERUP_LOGO_LEFT_POS_X, M1_POWERUP_LOGO_TOP_POS_Y, M1_POWERUP_LOGO_WIDTH, M1_POWERUP_LOGO_HEIGHT, m1_logo_40x32);
 
-	sprintf(fw_ver, "Version %d.%d", m1_device_stat.config.fw_version_major, m1_device_stat.config.fw_version_minor);
-	len = strlen(fw_ver);
+	/* NipTek emblem, centered near the top */
+	u8g2_DrawXBMP(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - M1_POWERUP_LOGO_WIDTH) / 2, 0,
+	              M1_POWERUP_LOGO_WIDTH, M1_POWERUP_LOGO_HEIGHT, m1_logo_40x32);
+
+	/* Firmware version, small, top-right */
+	sprintf(fw_ver, "v%d.%d", m1_device_stat.config.fw_version_major, m1_device_stat.config.fw_version_minor);
+	u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
+	u8g2_DrawStr(&m1_u8g2, M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, fw_ver) - 1, 8, fw_ver);
+
+	/* "NipTek M1" wordmark, centered */
 	u8g2_SetFont(&m1_u8g2, M1_POWERUP_LOGO_FONT);
-	u8g2_DrawStr(&m1_u8g2, M1_POWERUP_LOGO_LEFT_POS_X + M1_POWERUP_LOGO_WIDTH + 3, M1_POWERUP_LOGO_TOP_POS_Y + 15, "NipTek M1");
-	u8g2_SetFont(&m1_u8g2, M1_DISP_MAIN_MENU_FONT_N);
-	u8g2_DrawStr(&m1_u8g2, M1_POWERUP_LOGO_LEFT_POS_X + M1_POWERUP_LOGO_WIDTH + 3, M1_POWERUP_LOGO_TOP_POS_Y + 25, fw_ver);
+	u8g2_DrawStr(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, "NipTek M1")) / 2, 47, "NipTek M1");
 
-	len = strlen(scr_text);
-	x0 = (M1_LCD_DISPLAY_WIDTH - len*M1_GUI_FONT_WIDTH)/2;
-	if ( x0 >= M1_GUI_FONT_WIDTH )
-		x0 -= M1_GUI_FONT_WIDTH;
-
-	u8g2_SetFont(&m1_u8g2, M1_DISP_MAIN_MENU_FONT_B);
-	u8g2_DrawStr(&m1_u8g2, x0, 62, scr_text);
+	/* Second line: a FW-update status message when one is passed in, otherwise
+	 * the company name -- both centered. */
+	if ( scr_text != NULL && scr_text[0] != '\0' )
+	{
+		u8g2_SetFont(&m1_u8g2, M1_DISP_MAIN_MENU_FONT_B);
+		u8g2_DrawStr(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, scr_text)) / 2, 61, scr_text);
+	}
+	else
+	{
+		u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
+		u8g2_DrawStr(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, "Nipahc Technologies")) / 2, 60, "Nipahc Technologies");
+	}
 
 	m1_u8g2_nextpage(); // Update display RAM
 
