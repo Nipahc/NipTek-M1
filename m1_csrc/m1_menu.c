@@ -21,6 +21,7 @@
 #include "m1_gpio.h"
 #include "m1_infrared.h"
 #include "m1_nfc.h"
+#include "m1_specter.h"
 #include "m1_rfid.h"
 #include "m1_settings.h"
 #include "m1_sub_ghz.h"
@@ -117,10 +118,16 @@ S_M1_Menu_t menu_NFC_Tools =
     "Tools", nfc_tools, NULL, NULL, 0, 0, NULL, NULL, NULL
 };
 
+// NipTek: passive 13.56 MHz field detector (Specter)
+S_M1_Menu_t menu_NFC_Field_Detector =
+{
+    "Field Detector", specter_field_detector, NULL, NULL, 0, 0, NULL, NULL, NULL
+};
+
 S_M1_Menu_t menu_NFC =
 {
-    "NFC", &menu_nfc_init, menu_nfc_deinit, NULL, 3, 0, menu_m1_icon_nfc, NULL,
-    {&menu_NFC_Read, &menu_NFC_Saved, &menu_NFC_Tools }
+    "NFC", &menu_nfc_init, menu_nfc_deinit, NULL, 4, 0, menu_m1_icon_nfc, NULL,
+    {&menu_NFC_Read, &menu_NFC_Saved, &menu_NFC_Tools, &menu_NFC_Field_Detector }
 };
 
 /*----------------------------- > Infrared -----------------------------------*/

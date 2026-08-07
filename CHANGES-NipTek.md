@@ -17,7 +17,20 @@ The on-device firmware **version number is intentionally unchanged** (0.8.0.2). 
 stored in a CRC-protected config block the bootloader uses for update/bank decisions,
 so it is left alone until there is a reason to bump it.
 
+## Feature: Specter passive field detector
+
+New menu item **NFC -> Field Detector** (`m1_csrc/m1_specter.c` / `.h`,
+registered in `m1_csrc/m1_menu.c`, built via `cmake/m1_01/CMakeLists.txt`).
+
+- Passive 13.56 MHz field sweeper inspired by the Flipper Zero "Specter" app. The
+  M1 never transmits in this mode -- it only listens for an external reader's carrier.
+- Uses `rfalChipMeasureAmplitude()` for an analog strength gauge (0-255) and
+  `rfalIsExtFieldOn()` for the ST25R3916 hardware external-field detector.
+- UI: live numeric value, bar gauge, "FIELD DETECTED" banner, peak-hold. BACK exits,
+  LEFT clears the peak. Buzzes once on each new detection.
+- Costs ~1.3 KB flash. Detection threshold and smoothing are `#define`s at the top of
+  `m1_specter.c` for easy tuning.
+
 ## Planned
 
-- Port of a passive 13.56 MHz field-detector tool (Specter-style) using the M1's
-  ST25R3916 / RFAL amplitude measurement.
+- NipTek boot/main-screen logo swap (`m1_logo_26x14`, `menu_m1_icon_M1_logo_1`).
