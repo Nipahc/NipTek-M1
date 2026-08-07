@@ -33,10 +33,13 @@
 #include "main.h"
 #include "m1_specter.h"
 
-#include "rfal_nfc.h"      /* rfalNfcInitialize(), rfalNfcDeactivate()           */
-#include "rfal_chip.h"     /* rfalChipMeasureAmplitude()                         */
-#include "rfal_rf.h"       /* rfalIsExtFieldOn()                                 */
-#include "rfal_utils.h"    /* RFAL_ERR_NONE                                      */
+#include "app_x-cube-nfcx.h" /* NFC_Polling_Init(), NFC_Polling_DeInit()          */
+#include "rfal_chip.h"       /* rfalChipMeasureAmplitude()                        */
+#include "rfal_rf.h"         /* rfalIsExtFieldOn()                                */
+#include "rfal_utils.h"      /* RFAL_ERR_NONE                                     */
+
+/* Set true by NFC_Polling_Init() when the ST25R3916 answered over SPI. */
+extern bool isNFCDeviceOk;
 
 /******************************** D E F I N E S *******************************/
 
@@ -143,25 +146,22 @@ void specter_field_detector(void)
     S_M1_Buttons_Status this_button_status;
     S_M1_Main_Q_t q_item;
     BaseType_t ret;
-    ReturnCode err;
+    bool nfc_ok;
     uint8_t amp, ema, peak;
     bool present, was_present;
-    int i;
 
     platformLog("specter_field_detector()\r\n");
 
     specter_draw_static();
 
-    /* Bring up the reader IC. Retry a couple of times like the poller does.
-     * On failure, show a message and bail out gracefully. */
-    err = RFAL_ERR_NONE;
-    for (i = 0; i < 2; i++)
-    {
-        err = rfalNfcInitialize();
-        if (err == RFAL_ERR_NONE) break;
-        vTaskDelay(5);
-    }
-    if (err != RFAL_ERR_NONE)
+    /* Full reader bring-up, same as the NFC read menu: registers the ST25R3916
+     * IRQ callback, enables the EN_EXT_5V rail, and runs rfalNfcInitialize +
+     * discovery config. Calling rfalNfcInitialize() alone is NOT enough -- the
+     * chip is unpowered and its init-complete interrupt never fires. ReadIni()
+     * (inside here) leaves the field deactivated to idle, so we stay passive. */
+    NFC_Polling_Init();
+    nfc_ok = isNFCDeviceOk;
+    if (!nfc_ok)
     {
         m1_u8g2_firstpage();
         do
@@ -174,11 +174,6 @@ void specter_field_detector(void)
             u8g2_DrawStr(&m1_u8g2, 1, 46, "Press BACK to exit.");
         } while (m1_u8g2_nextpage());
     }
-    else
-    {
-        /* Keep our own field OFF -- purely passive listening. */
-        rfalNfcDeactivate(RFAL_NFC_DEACTIVATE_IDLE);
-    }
 
     ema = 0;
     peak = 0;
@@ -186,7 +181,7 @@ void specter_field_detector(void)
 
     while (1)
     {
-        if (err == RFAL_ERR_NONE)
+        if (nfc_ok)
         {
             /* Passive amplitude read on the receiver inputs (our TX stays off). */
             amp = 0;
@@ -223,10 +218,12 @@ void specter_field_detector(void)
                 {
                     if (this_button_status.event[BUTTON_BACK_KP_ID] == BUTTON_EVENT_CLICK)
                     {
-                        /* Leave the IC idle with the field off, then return. */
-                        if (err == RFAL_ERR_NONE)
+                        /* Deactivate + deinit the reader and drop the 5V rail,
+                         * mirroring the worker's DONE state, then return. */
+                        if (nfc_ok)
                         {
-                            rfalNfcDeactivate(RFAL_NFC_DEACTIVATE_IDLE);
+                            NFC_Polling_DeInit();
+                            HAL_GPIO_WritePin(EN_EXT_5V_GPIO_Port, EN_EXT_5V_Pin, GPIO_PIN_RESET);
                         }
                         xQueueReset(main_q_hdl);
                         break;
