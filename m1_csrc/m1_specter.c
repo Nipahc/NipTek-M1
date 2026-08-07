@@ -43,10 +43,20 @@ extern bool isNFCDeviceOk;
 
 /******************************** D E F I N E S *******************************/
 
-/* Amplitude (0..255) at or above which we call the field "present" even if the
- * hardware EFD comparator has not latched. Tuned conservatively; raise it if
- * ambient noise triggers false positives on your unit. */
-#define SPECTER_DETECT_THRESHOLD    16U
+/* The receiver reports a non-zero resting amplitude (measured ~53/255 on
+ * hardware) even with no external field, so detection is done RELATIVE to a
+ * baseline sampled at startup: strength = amplitude - baseline. */
+
+/* Strength (counts above baseline) at/above which we call a field "present",
+ * when the hardware EFD hasn't latched. Set above the resting jitter (~+/-4). */
+#define SPECTER_DELTA_THRESHOLD     10U
+
+/* Gauge full-scale in strength counts. External reader fields are far smaller
+ * than the full 0..255 range, so scale to this for a lively meter. */
+#define SPECTER_FULL_SCALE          120U
+
+/* Samples averaged to establish the no-field baseline at startup / on re-zero. */
+#define SPECTER_CAL_SAMPLES         24U
 
 /* Exponential-moving-average smoothing shift for the gauge (higher = smoother,
  * slower). newEMA = ema + (sample - ema) >> SHIFT. */
@@ -83,33 +93,70 @@ static void specter_draw_static(void)
 
 /*============================================================================*/
 /*
- * Redraw the dynamic parts: numeric amplitude, gauge fill, status + peak.
- *   ema      smoothed amplitude 0..255
- *   peak     peak-hold amplitude 0..255
- *   present  true if an external field is currently detected
+ * One passive amplitude read on the receiver inputs (our TX stays off).
+ * Returns 0..255, or 0 on measurement error.
  */
 /*============================================================================*/
-static void specter_draw_dynamic(uint8_t ema, uint8_t peak, bool present)
+static uint8_t specter_read_amp(void)
 {
-    char line[24];
+    uint8_t amp = 0;
+    if (rfalChipMeasureAmplitude(&amp) != RFAL_ERR_NONE)
+    {
+        amp = 0;
+    }
+    return amp;
+}
+
+/*============================================================================*/
+/*
+ * Sample the no-field baseline (average of several reads). Called at startup
+ * and on re-zero so "strength" reads ~0 with no external field present.
+ */
+/*============================================================================*/
+static uint8_t specter_calibrate(void)
+{
+    uint32_t acc = 0;
+    uint8_t i;
+    for (i = 0; i < SPECTER_CAL_SAMPLES; i++)
+    {
+        acc += specter_read_amp();
+        vTaskDelay(5);
+    }
+    return (uint8_t)(acc / SPECTER_CAL_SAMPLES);
+}
+
+/*============================================================================*/
+/*
+ * Redraw the dynamic parts: strength number, gauge, status, and a tuning line.
+ *   strength  smoothed counts above baseline (0 = no field)
+ *   peak      peak-hold of strength
+ *   raw       last raw amplitude 0..255 (for tuning)
+ *   baseline  calibrated no-field level (for tuning)
+ *   present   true if an external field is currently detected
+ */
+/*============================================================================*/
+static void specter_draw_dynamic(uint8_t strength, uint8_t peak, uint8_t raw, uint8_t baseline, bool present)
+{
+    char line[26];
     uint16_t fill;
+    uint8_t clamped = (strength > SPECTER_FULL_SCALE) ? SPECTER_FULL_SCALE : strength;
 
-    /* Bar fill proportional to smoothed amplitude, kept inside the frame. */
-    fill = (uint16_t)(((uint32_t)ema * (SPECTER_BAR_W - 2)) / 255U);
+    /* Bar fill proportional to strength (relative to baseline), inside frame. */
+    fill = (uint16_t)(((uint32_t)clamped * (SPECTER_BAR_W - 2)) / SPECTER_FULL_SCALE);
 
-    /* Clear the numeric row and the status rows, then redraw. */
+    /* Clear the numeric row, the bar interior, and the status rows. */
     u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_BG);
     u8g2_DrawBox(&m1_u8g2, 0, 14, M1_LCD_DISPLAY_WIDTH, 18);                 /* numeric area */
-    u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, SPECTER_BAR_W - 2, SPECTER_BAR_H - 2); /* inside frame */
+    u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, SPECTER_BAR_W - 2, SPECTER_BAR_H - 2);
     u8g2_DrawBox(&m1_u8g2, 0, INFO_BOX_Y_POS_ROW_2 - 9, M1_LCD_DISPLAY_WIDTH, 22); /* status rows */
     u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_TXT);
 
-    /* Big numeric amplitude + label. */
+    /* Big strength number. */
     u8g2_SetFont(&m1_u8g2, M1_DISP_LARGE_FONT_2B);
-    snprintf(line, sizeof(line), "%3u", (unsigned)ema);
+    snprintf(line, sizeof(line), "%3u", (unsigned)strength);
     u8g2_DrawStr(&m1_u8g2, 10, 30, line);
     u8g2_SetFont(&m1_u8g2, M1_DISP_MAIN_MENU_FONT_N);
-    u8g2_DrawStr(&m1_u8g2, 78, 28, "/255");
+    u8g2_DrawStr(&m1_u8g2, 78, 28, "fld");
 
     /* Gauge fill. */
     if (fill > 0)
@@ -117,17 +164,13 @@ static void specter_draw_dynamic(uint8_t ema, uint8_t peak, bool present)
         u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, (uint8_t)fill, SPECTER_BAR_H - 2);
     }
 
-    /* Status line: detection banner or idle. */
+    /* Status line. */
     u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
-    if (present)
-    {
-        u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_2, "** FIELD DETECTED **");
-    }
-    else
-    {
-        u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_2, "Scanning... (passive)");
-    }
-    snprintf(line, sizeof(line), "Peak: %3u   BACK=exit", (unsigned)peak);
+    u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_2,
+                 present ? "** FIELD DETECTED **" : "Scanning... (passive)");
+
+    /* Tuning line: raw amplitude, calibrated baseline, peak strength. */
+    snprintf(line, sizeof(line), "r%3u b%3u pk%3u", (unsigned)raw, (unsigned)baseline, (unsigned)peak);
     u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_3, line);
 
     m1_u8g2_nextpage();
@@ -147,7 +190,7 @@ void specter_field_detector(void)
     S_M1_Main_Q_t q_item;
     BaseType_t ret;
     bool nfc_ok;
-    uint8_t amp, ema, peak;
+    uint8_t amp, baseline, strength, ema, peak;
     bool present, was_present;
 
     platformLog("specter_field_detector()\r\n");
@@ -175,6 +218,8 @@ void specter_field_detector(void)
         } while (m1_u8g2_nextpage());
     }
 
+    baseline = nfc_ok ? specter_calibrate() : 0;  /* sample the no-field level */
+    amp = baseline;
     ema = 0;
     peak = 0;
     was_present = false;
@@ -183,19 +228,17 @@ void specter_field_detector(void)
     {
         if (nfc_ok)
         {
-            /* Passive amplitude read on the receiver inputs (our TX stays off). */
-            amp = 0;
-            if (rfalChipMeasureAmplitude(&amp) != RFAL_ERR_NONE)
-            {
-                amp = 0;
-            }
+            amp = specter_read_amp();
+
+            /* Strength = amount above the calibrated no-field baseline. */
+            strength = (amp > baseline) ? (uint8_t)(amp - baseline) : 0;
 
             /* Smooth for a steady gauge. */
-            ema = (uint8_t)(ema + (((int)amp - (int)ema) >> SPECTER_EMA_SHIFT));
+            ema = (uint8_t)(ema + (((int)strength - (int)ema) >> SPECTER_EMA_SHIFT));
             if (ema > peak) peak = ema;
 
-            /* Field present if the hardware EFD says so, or amplitude is high. */
-            present = rfalIsExtFieldOn() || (ema >= SPECTER_DETECT_THRESHOLD);
+            /* Field present if the hardware EFD latched, or strength rose clearly. */
+            present = rfalIsExtFieldOn() || (ema >= SPECTER_DELTA_THRESHOLD);
 
             /* Buzz once on the rising edge of a detection. */
             if (present && !was_present)
@@ -204,7 +247,7 @@ void specter_field_detector(void)
             }
             was_present = present;
 
-            specter_draw_dynamic(ema, peak, present);
+            specter_draw_dynamic(ema, peak, amp, baseline, present);
         }
 
         /* --- keypad handling: same pattern as sub_ghz_frequency_reader() --- */
@@ -230,7 +273,10 @@ void specter_field_detector(void)
                     }
                     else if (this_button_status.event[BUTTON_LEFT_KP_ID] == BUTTON_EVENT_CLICK)
                     {
-                        peak = 0; /* clear peak-hold */
+                        /* Re-zero: resample the no-field baseline and clear peak. */
+                        baseline = specter_calibrate();
+                        ema = 0;
+                        peak = 0;
                     }
                 }
             }
