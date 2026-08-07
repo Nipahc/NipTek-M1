@@ -55,3 +55,7 @@ compile_commands.json
 build/
 /.cache
 /artifacts
+
+# NipTek branding source asset (baked into m1_display_data.c)
+nipahc_logo.png
+nipahc_lockup.png

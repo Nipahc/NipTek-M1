@@ -450,10 +450,10 @@ uint8_t m1_gui_submenu_update(const char *phmenu[], uint8_t num_items, uint8_t s
 
 	if ( menu_level_id==0 )
 	{
-		// Draw logo for main menu
-		u8g2_DrawXBMP(&m1_u8g2, MAIN_MENU_LOGO_LEFT_POS_X, MAIN_MENU_LOGO_TOP_POS_Y, MAIN_MENU_LOGO_WIDTH, MAIN_MENU_LOGO_HEIGHT, m1_logo_26x14);
-		u8g2_SetFont(&m1_u8g2, MAIN_MENU_LOGO_FONT);
-		u8g2_DrawStr(&m1_u8g2, MAIN_MENU_LOGO_LEFT_POS_X + MAIN_MENU_LOGO_WIDTH + 1, MAIN_MENU_LOGO_TOP_POS_Y + MAIN_MENU_LOGO_HEIGHT, "M1");
+		// NipTek: text wordmark on the main menu header (replaces the old M-mark + "M1").
+		// Compact font so "NipTek M1" fits the left column (x0..~47, before the menu list).
+		u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
+		u8g2_DrawStr(&m1_u8g2, MAIN_MENU_LOGO_LEFT_POS_X, MAIN_MENU_LOGO_TOP_POS_Y + 12, "NipTek M1");
 	} // if ( menu_level_id==0 )
 
 	// Draw the scroll bar

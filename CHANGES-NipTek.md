@@ -31,6 +31,14 @@ registered in `m1_csrc/m1_menu.c`, built via `cmake/m1_01/CMakeLists.txt`).
 - Costs ~1.3 KB flash. Detection threshold and smoothing are `#define`s at the top of
   `m1_specter.c` for easy tuning.
 
+## Branding: NipTek logo
+
+- **Boot splash** (`m1_csrc/m1_display_data.c`, `menu_m1_icon_M1_logo_1`, 128x64 XBM):
+  replaced the MonstaTek mark with the Nipahc emblem + "NipTek" wordmark, reduced to
+  1-bit from the Nipahc Technologies logo.
+- **Main-menu header** (`m1_csrc/m1_display.c`): replaced the small M-mark + "M1" with
+  "NipTek M1" text in the compact font. The old `m1_logo_26x14` bitmap is now unused.
+
 ## Planned
 
-- NipTek boot/main-screen logo swap (`m1_logo_26x14`, `menu_m1_icon_M1_logo_1`).
+- (open) tune Field Detector threshold after on-device testing.
