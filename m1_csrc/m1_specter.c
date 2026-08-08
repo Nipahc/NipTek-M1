@@ -56,6 +56,11 @@ extern bool isNFCDeviceOk;
  * brief pulsed field (e.g. amiibo) stays readable. ~40 ms/frame -> ~1.2 s. */
 #define SPECTER_DETECT_HOLD         30U
 
+/* The meter jumps up to a new reading instantly but eases back down by this many
+ * percent per frame, so a brief pulse doesn't flash straight back to 0. ~4/frame
+ * over ~40 ms/frame gives a ~1 s fall from full scale. */
+#define SPECTER_LEVEL_DECAY         4U
+
 /* Gauge bar geometry (display is 128x64). */
 #define SPECTER_BAR_X               4
 #define SPECTER_BAR_Y               34
@@ -142,7 +147,7 @@ void specter_field_detector(void)
     S_M1_Main_Q_t q_item;
     BaseType_t ret;
     bool nfc_ok;
-    uint8_t duty, peak;
+    uint8_t duty, peak, level;
     bool present;
     uint8_t i, hold;
     uint16_t hits, detections;
@@ -172,6 +177,7 @@ void specter_field_detector(void)
     }
 
     peak = 0;
+    level = 0;
     hold = 0;
     detections = 0;
 
@@ -193,6 +199,17 @@ void specter_field_detector(void)
             duty = (uint8_t)(((uint32_t)hits * 100U) / SPECTER_EFD_SAMPLES);
             if (duty > peak) peak = duty;
 
+            /* Peak-hold meter: snap up instantly, ease down slowly so a brief
+             * pulse stays readable instead of flashing back to 0. */
+            if (duty >= level)
+            {
+                level = duty;
+            }
+            else
+            {
+                level = (level > SPECTER_LEVEL_DECAY) ? (uint8_t)(level - SPECTER_LEVEL_DECAY) : 0U;
+            }
+
             present = (duty >= SPECTER_DUTY_THRESHOLD);
             if (present)
             {
@@ -209,7 +226,7 @@ void specter_field_detector(void)
                 hold--;
             }
 
-            specter_draw_dynamic(duty, peak, detections, (hold > 0));
+            specter_draw_dynamic(level, peak, detections, (hold > 0));
         }
         else
         {
