@@ -800,8 +800,10 @@ void startup_info_screen_display(const char *scr_text)
 	u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
 	u8g2_DrawStr(&m1_u8g2, M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, fw_ver) - 1, 8, fw_ver);
 
-	/* "NipTek M1" wordmark, centered */
-	u8g2_SetFont(&m1_u8g2, M1_POWERUP_LOGO_FONT);
+	/* "NipTek M1" wordmark, centered. NOTE: must use a font that HAS lowercase
+	 * glyphs -- M1_POWERUP_LOGO_FONT (tenthinnerguys_tu) is uppercase-only and
+	 * would render "NipTek" as "NT". profont17 (LARGE_FONT_1B) has lowercase. */
+	u8g2_SetFont(&m1_u8g2, M1_DISP_LARGE_FONT_1B);
 	u8g2_DrawStr(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - u8g2_GetStrWidth(&m1_u8g2, "NipTek M1")) / 2, 47, "NipTek M1");
 
 	/* Second line: a FW-update status message when one is passed in, otherwise

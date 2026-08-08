@@ -36,9 +36,7 @@
 #include "m1_specter.h"
 
 #include "app_x-cube-nfcx.h" /* NFC_Polling_Init(), NFC_Polling_DeInit()          */
-#include "rfal_chip.h"       /* rfalChipMeasureAmplitude()                        */
 #include "rfal_rf.h"         /* rfalIsExtFieldOn()                                */
-#include "rfal_utils.h"      /* RFAL_ERR_NONE                                     */
 
 /* Set true by NFC_Polling_Init() when the ST25R3916 answered over SPI. */
 extern bool isNFCDeviceOk;
@@ -54,6 +52,10 @@ extern bool isNFCDeviceOk;
  * Above single-sample noise so it doesn't false-trigger while idle. */
 #define SPECTER_DUTY_THRESHOLD      5U
 
+/* Frames to keep the "FIELD DETECTED" banner latched after the last hit, so a
+ * brief pulsed field (e.g. amiibo) stays readable. ~40 ms/frame -> ~1.2 s. */
+#define SPECTER_DETECT_HOLD         30U
+
 /* Gauge bar geometry (display is 128x64). */
 #define SPECTER_BAR_X               4
 #define SPECTER_BAR_Y               34
@@ -61,22 +63,6 @@ extern bool isNFCDeviceOk;
 #define SPECTER_BAR_H               12
 
 /**************** F U N C T I O N   I M P L E M E N T A T I O N ****************/
-
-/*============================================================================*/
-/*
- * One passive amplitude read on the receiver inputs (our TX stays off).
- * Shown only as a tuning aid; returns 0..255, or 0 on error.
- */
-/*============================================================================*/
-static uint8_t specter_read_amp(void)
-{
-    uint8_t amp = 0;
-    if (rfalChipMeasureAmplitude(&amp) != RFAL_ERR_NONE)
-    {
-        amp = 0;
-    }
-    return amp;
-}
 
 /*============================================================================*/
 /*
@@ -100,11 +86,11 @@ static void specter_draw_static(void)
  * Redraw the dynamic parts.
  *   duty     current field-present duty cycle, 0..100 (the meter value)
  *   peak     peak-hold of duty
- *   raw      last raw amplitude 0..255 (tuning aid)
- *   present  true if a field is currently detected
+ *   hits     running count of detection events (each new field seen)
+ *   held     true while the detection banner is latched
  */
 /*============================================================================*/
-static void specter_draw_dynamic(uint8_t duty, uint8_t peak, uint8_t raw, bool present)
+static void specter_draw_dynamic(uint8_t duty, uint8_t peak, uint16_t hits, bool held)
 {
     char line[26];
     uint16_t fill;
@@ -131,13 +117,13 @@ static void specter_draw_dynamic(uint8_t duty, uint8_t peak, uint8_t raw, bool p
         u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, (uint8_t)fill, SPECTER_BAR_H - 2);
     }
 
-    /* Status line. */
+    /* Status line: latched detection banner. */
     u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
     u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_2,
-                 present ? "** FIELD DETECTED **" : "Scanning... (passive)");
+                 held ? "** FIELD DETECTED **" : "Scanning... (passive)");
 
-    /* Tuning line: raw amplitude + peak duty. */
-    snprintf(line, sizeof(line), "raw%3u  peak%3u%%", (unsigned)raw, (unsigned)peak);
+    /* Info line: running hit count + peak duty (LEFT resets). */
+    snprintf(line, sizeof(line), "Hits:%u  Peak:%u%%", (unsigned)hits, (unsigned)peak);
     u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_3, line);
 
     m1_u8g2_nextpage();
@@ -156,10 +142,10 @@ void specter_field_detector(void)
     S_M1_Main_Q_t q_item;
     BaseType_t ret;
     bool nfc_ok;
-    uint8_t duty, peak, raw;
-    bool present, was_present;
-    uint8_t i;
-    uint16_t hits;
+    uint8_t duty, peak;
+    bool present;
+    uint8_t i, hold;
+    uint16_t hits, detections;
 
     platformLog("specter_field_detector()\r\n");
 
@@ -186,8 +172,8 @@ void specter_field_detector(void)
     }
 
     peak = 0;
-    raw = 0;
-    was_present = false;
+    hold = 0;
+    detections = 0;
 
     while (1)
     {
@@ -207,16 +193,23 @@ void specter_field_detector(void)
             duty = (uint8_t)(((uint32_t)hits * 100U) / SPECTER_EFD_SAMPLES);
             if (duty > peak) peak = duty;
 
-            raw = specter_read_amp(); /* tuning aid only */
-
             present = (duty >= SPECTER_DUTY_THRESHOLD);
-            if (present && !was_present)
+            if (present)
             {
-                m1_buzzer_notification(); /* buzz once on each new detection */
+                if (hold == 0)
+                {
+                    /* rising edge of a new detection: count it and buzz */
+                    detections++;
+                    m1_buzzer_notification();
+                }
+                hold = SPECTER_DETECT_HOLD; /* (re)latch the banner */
             }
-            was_present = present;
+            else if (hold > 0)
+            {
+                hold--;
+            }
 
-            specter_draw_dynamic(duty, peak, raw, present);
+            specter_draw_dynamic(duty, peak, detections, (hold > 0));
         }
         else
         {
@@ -246,7 +239,8 @@ void specter_field_detector(void)
                     }
                     else if (this_button_status.event[BUTTON_LEFT_KP_ID] == BUTTON_EVENT_CLICK)
                     {
-                        peak = 0; /* clear peak-hold */
+                        peak = 0;        /* clear peak-hold */
+                        detections = 0;  /* clear hit counter */
                     }
                 }
             }
