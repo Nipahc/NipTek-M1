@@ -65,7 +65,7 @@ extern bool isNFCDeviceOk;
 #define SPECTER_BAR_X               4
 #define SPECTER_BAR_Y               34
 #define SPECTER_BAR_W               120
-#define SPECTER_BAR_H               12
+#define SPECTER_BAR_H               10
 
 /**************** F U N C T I O N   I M P L E M E N T A T I O N ****************/
 
@@ -95,41 +95,53 @@ static void specter_draw_static(void)
  *   held     true while the detection banner is latched
  */
 /*============================================================================*/
-static void specter_draw_dynamic(uint8_t duty, uint8_t peak, uint16_t hits, bool held)
+static void specter_draw_dynamic(uint8_t level, uint8_t peak, uint16_t hits, bool held)
 {
     char line[26];
     uint16_t fill;
+    uint8_t nw;
 
-    if (duty > 100U) duty = 100U;
-    fill = (uint16_t)(((uint32_t)duty * (SPECTER_BAR_W - 2)) / 100U);
+    if (level > 100U) level = 100U;
+    fill = (uint16_t)(((uint32_t)level * (SPECTER_BAR_W - 2)) / 100U);
 
-    /* Clear numeric row, bar interior, and status rows. */
+    /* Clear everything below the title, then redraw. */
     u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_BG);
-    u8g2_DrawBox(&m1_u8g2, 0, 14, M1_LCD_DISPLAY_WIDTH, 18);
-    u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, SPECTER_BAR_W - 2, SPECTER_BAR_H - 2);
-    u8g2_DrawBox(&m1_u8g2, 0, INFO_BOX_Y_POS_ROW_2 - 9, M1_LCD_DISPLAY_WIDTH, 22);
+    u8g2_DrawBox(&m1_u8g2, 0, 12, M1_LCD_DISPLAY_WIDTH, M1_LCD_DISPLAY_HEIGHT - 12);
     u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_TXT);
 
-    /* Big duty-cycle number + unit. */
+    /* Big field-level number, right-padded with a "%" unit. */
     u8g2_SetFont(&m1_u8g2, M1_DISP_LARGE_FONT_2B);
-    snprintf(line, sizeof(line), "%3u", (unsigned)duty);
-    u8g2_DrawStr(&m1_u8g2, 10, 30, line);
+    snprintf(line, sizeof(line), "%u", (unsigned)level);
+    u8g2_DrawStr(&m1_u8g2, 8, 31, line);
+    nw = (uint8_t)u8g2_GetStrWidth(&m1_u8g2, line);
     u8g2_SetFont(&m1_u8g2, M1_DISP_MAIN_MENU_FONT_N);
-    u8g2_DrawStr(&m1_u8g2, 78, 28, "%fld");
+    u8g2_DrawStr(&m1_u8g2, 8 + nw + 3, 31, "%");
 
+    /* Gauge frame + fill. */
+    u8g2_DrawFrame(&m1_u8g2, SPECTER_BAR_X, SPECTER_BAR_Y, SPECTER_BAR_W, SPECTER_BAR_H);
     if (fill > 0)
     {
         u8g2_DrawBox(&m1_u8g2, SPECTER_BAR_X + 1, SPECTER_BAR_Y + 1, (uint8_t)fill, SPECTER_BAR_H - 2);
     }
 
-    /* Status line: latched detection banner. */
+    /* Status: an inverted (filled) banner when a field is detected, so it pops. */
     u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
-    u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_2,
-                 held ? "** FIELD DETECTED **" : "Scanning... (passive)");
+    if (held)
+    {
+        u8g2_DrawBox(&m1_u8g2, 0, 46, M1_LCD_DISPLAY_WIDTH, 11);
+        u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_BG);
+        nw = (uint8_t)u8g2_GetStrWidth(&m1_u8g2, "FIELD DETECTED");
+        u8g2_DrawStr(&m1_u8g2, (M1_LCD_DISPLAY_WIDTH - nw) / 2, 54, "FIELD DETECTED");
+        u8g2_SetDrawColor(&m1_u8g2, M1_DISP_DRAW_COLOR_TXT);
+    }
+    else
+    {
+        u8g2_DrawStr(&m1_u8g2, 2, 54, "Scanning...");
+    }
 
-    /* Info line: running hit count + peak duty (LEFT resets). */
-    snprintf(line, sizeof(line), "Hits:%u  Peak:%u%%", (unsigned)hits, (unsigned)peak);
-    u8g2_DrawStr(&m1_u8g2, 1, INFO_BOX_Y_POS_ROW_3, line);
+    /* Bottom: running hit count + peak level (LEFT resets both). */
+    snprintf(line, sizeof(line), "Hits:%u   Peak:%u%%", (unsigned)hits, (unsigned)peak);
+    u8g2_DrawStr(&m1_u8g2, 2, 63, line);
 
     m1_u8g2_nextpage();
 }
