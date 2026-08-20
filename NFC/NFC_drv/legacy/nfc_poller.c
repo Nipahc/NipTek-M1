@@ -112,6 +112,13 @@ extern uint8_t g_nfc_valid_bits[NFC_VALID_BITS_SIZE];
 
 static rfalNfcDiscoverParam discParam;
 static uint8_t              state = NOTINIT;
+
+/* Debounce for the read loop: remember the last tag read so the same tag
+ * sitting in the field isn't re-read and re-reported every discovery cycle
+ * ("keeps resending"). Reset when the field clears or a new read starts. */
+static uint8_t              s_last_uid[10];
+static uint8_t              s_last_uid_len = 0;
+static bool                 s_have_last    = false;
 static bool                 multiSel;
 
 
@@ -278,6 +285,20 @@ void ReadCycle(void)
 
             rfalNfcGetActiveDevice(&nfcDevice); /* Get active device */
 
+            /* Debounce: if this is the SAME tag we just read and it's still in
+             * the field, skip re-reading/re-notifying so we don't spam repeated
+             * read events. It was already captured on the first pass. */
+            if ( s_have_last && (nfcDevice != NULL)
+                 && (nfcDevice->nfcidLen == s_last_uid_len)
+                 && (s_last_uid_len > 0)
+                 && (memcmp(nfcDevice->nfcid, s_last_uid, s_last_uid_len) == 0) )
+            {
+                rfalNfcDeactivate(RFAL_NFC_DEACTIVATE_IDLE);
+                state = START_DISCOVERY;
+                m1_wdt_reset();
+                break; /* leave the DISCOVERY case for this cycle */
+            }
+
             uint8_t ctx_err = FillNfcContextFromDevice(nfcDevice);
             if (ctx_err != 0) {
                 platformLog("FillNfcContextFromDevice err=%d (type=%d)\r\n",
@@ -429,6 +450,15 @@ void ReadCycle(void)
                 NFC_ID[i] = nfcDevice->nfcid[i];
             }
 
+            /* Remember this tag so it isn't re-read while it stays in the field. */
+            if ( (nfcDevice != NULL) && (nfcDevice->nfcidLen > 0)
+                 && (nfcDevice->nfcidLen <= sizeof(s_last_uid)) )
+            {
+                memcpy(s_last_uid, nfcDevice->nfcid, nfcDevice->nfcidLen);
+                s_last_uid_len = nfcDevice->nfcidLen;
+                s_have_last    = true;
+            }
+
             /* Notify read completion */
             if (notifyRead) {
                 m1_wdt_reset();
@@ -443,6 +473,8 @@ void ReadCycle(void)
         }
         else
         {
+            /* Field is clear -- forget the last tag so re-tapping it reads again. */
+            s_have_last = false;
             /* Nothing found. Continue polling in next cycle */
             //platformLog("rfalNfcIsDevActivated false\r\n\r\n");
         }
@@ -476,6 +508,10 @@ void ReadCycle(void)
 bool ReadIni(void)
 {
     ReturnCode err = RFAL_ERR_NONE;
+
+    /* Start each read session fresh: allow the first tag to read immediately. */
+    s_have_last    = false;
+    s_last_uid_len = 0;
 
     /* 1) RFAL Initialize (retry 2 times) */
     for (int i = 0; i < 2; i++) {
