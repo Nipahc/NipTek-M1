@@ -59,3 +59,9 @@ build/
 # NipTek branding source asset (baked into m1_display_data.c)
 nipahc_logo.png
 nipahc_lockup.png
+
+# User SD-card data kept in the repo folder (amiibo dumps, IR captures) -- not firmware
+/infared/
+/nfc/
+NFC/Amibo/
+NFC/assets/
