@@ -13,12 +13,15 @@
 /*************************** I N C L U D E S **********************************/
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
 //#include "stm32h5xx_hal.h"
 //#include "main.h"
 #include "m1_lp5814.h"
 #include "m1_io_defs.h"
 #include "m1_compile_cfg.h"
 #include "m1_display.h"
+#include "battery.h"   /* battery_power_status_get() for the main-menu indicator */
 
 /*************************** D E F I N E S ************************************/
 
@@ -227,6 +230,47 @@ void m1_gui_menu_update(const S_M1_Menu_t *phmenu, uint8_t sel_item, uint8_t dir
 } // void m1_gui_menu_update(const S_M1_Menu_t *phmenu, uint8_t sel_item, uint8_t direction)
 
 
+
+/*============================================================================*/
+/**
+  * @brief Draw a small battery indicator (outline + fill + percent) at (x,y).
+  *        Shows a lightning bolt when charging. Reads the cached power status,
+  *        so it is cheap to call each redraw.
+  */
+/*============================================================================*/
+static void draw_main_menu_battery(uint8_t x, uint8_t y)
+{
+	S_M1_Power_Status_t ps;
+	uint8_t level, fillw;
+	char buf[8];
+
+	battery_power_status_get(&ps);
+	level = ps.battery_level;
+	if ( level > 100 ) level = 100;
+
+	/* Battery body (20x10) + positive-terminal tip */
+	u8g2_DrawFrame(&m1_u8g2, x, y, 20, 10);
+	u8g2_DrawBox(&m1_u8g2, x + 20, y + 3, 2, 4);
+
+	/* Fill proportional to level, inside the 1px border (interior width 18) */
+	fillw = (uint8_t)(((uint16_t)level * 18U) / 100U);
+	if ( fillw > 0 )
+		u8g2_DrawBox(&m1_u8g2, x + 1, y + 1, fillw, 8);
+
+	/* Percentage text to the right of the icon */
+	u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
+	sprintf(buf, "%u%%", (unsigned)level);
+	u8g2_DrawStr(&m1_u8g2, x + 25, y + 9, buf);
+
+	/* Charging: draw a small lightning bolt after the percent text */
+	if ( ps.isCharging )
+	{
+		uint8_t bx = x + 25 + (uint8_t)u8g2_GetStrWidth(&m1_u8g2, buf) + 3;
+		uint8_t by = y;
+		u8g2_DrawTriangle(&m1_u8g2, bx + 3, by,     bx,     by + 5, bx + 3, by + 5);
+		u8g2_DrawTriangle(&m1_u8g2, bx + 1, by + 4, bx + 4, by + 4, bx + 1, by + 9);
+	}
+}
 
 /*============================================================================*/
 /**
@@ -450,6 +494,9 @@ uint8_t m1_gui_submenu_update(const char *phmenu[], uint8_t num_items, uint8_t s
 
 	if ( menu_level_id==0 )
 	{
+		// Battery indicator in the free top-left area of the main menu
+		draw_main_menu_battery(2, 2);
+
 		// NipTek: text wordmark on the main menu header (replaces the old M-mark + "M1").
 		// Compact font so "NipTek M1" fits the left column (x0..~47, before the menu list).
 		u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
