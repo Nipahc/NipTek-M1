@@ -257,19 +257,18 @@ static void draw_main_menu_battery(uint8_t x, uint8_t y)
 	if ( fillw > 0 )
 		u8g2_DrawBox(&m1_u8g2, x + 1, y + 1, fillw, 8);
 
-	/* Percentage text to the right of the icon */
-	u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
-	sprintf(buf, "%u%%", (unsigned)level);
-	u8g2_DrawStr(&m1_u8g2, x + 25, y + 9, buf);
-
-	/* Charging: draw a small lightning bolt after the percent text */
+	/* Charging: a small lightning bolt just right of the icon (clear of the menu) */
 	if ( ps.isCharging )
 	{
-		uint8_t bx = x + 25 + (uint8_t)u8g2_GetStrWidth(&m1_u8g2, buf) + 3;
-		uint8_t by = y;
+		uint8_t bx = x + 24, by = y;
 		u8g2_DrawTriangle(&m1_u8g2, bx + 3, by,     bx,     by + 5, bx + 3, by + 5);
 		u8g2_DrawTriangle(&m1_u8g2, bx + 1, by + 4, bx + 4, by + 4, bx + 1, by + 9);
 	}
+
+	/* Percentage text BELOW the icon, kept in the left column */
+	u8g2_SetFont(&m1_u8g2, M1_DISP_SUB_MENU_FONT_N);
+	sprintf(buf, "%u%%", (unsigned)level);
+	u8g2_DrawStr(&m1_u8g2, x, y + 20, buf);
 }
 
 /*============================================================================*/
