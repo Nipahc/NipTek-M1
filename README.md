@@ -5,7 +5,7 @@
 **A [Nipahc Technologies](https://github.com/Nipahc) flavor of the Monstatek M1 firmware.**
 
 NipTek M1 is a custom build of the open-source Monstatek M1 firmware with its own
-branding and (in progress) feature additions.
+branding and (in progress) feature additions. (This has been VibeCoded with Claude)
 
 - **Based on:** [Monstatek/M1](https://github.com/Monstatek/M1) — all original hardware
   bring-up, drivers, and protocol stacks are Monstatek's work.
